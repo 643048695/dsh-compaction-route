@@ -1,0 +1,46 @@
+{
+  "name": "dsh-compaction-route",
+  "version": "0.1.0",
+  "description": "Pick the conversation-compaction summarizer in the Web settings page, and give it a fallback model for when the primary cannot take the replay.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./lib/index.js"
+    },
+    "./client": "./client/client.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib",
+    "client",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/schemastery": "*"
+  },
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "dsh-plugin",
+    "compaction",
+    "compaction-model",
+    "context",
+    "fallback"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/643048695/dsh-compaction-route.git"
+  }
+}

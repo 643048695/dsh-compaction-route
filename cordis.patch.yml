@@ -1,0 +1,12 @@
+# dsh-compaction-route bundle layer.
+#
+# Inserts one host row. The row id ("compaction-route") is also the settings
+# namespace the Web card reads and writes, so the client half and the host half
+# agree on one name without any further wiring.
+#
+# The row carries no config: every field below is declared volatile by the host
+# half's schema, so the Web settings page owns the values and the plugin reads
+# them live at each compaction call.
+- insert:
+    - id: compaction-route
+      name: dsh-compaction-route
