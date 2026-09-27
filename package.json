@@ -42,9 +42,6 @@
       "platform": "web"
     }
   },
-  "peerDependencies": {
-    "@deepseek-ai/schemastery": "*"
-  },
   "keywords": [
     "dsh",
     "deepseek-harness",
@@ -56,5 +53,8 @@
     "context-window",
     "fallback",
     "summarizer"
-  ]
+  ],
+  "dependencies": {
+    "@deepseek-ai/schemastery": "^3.18.2"
+  }
 }
