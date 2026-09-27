@@ -58,6 +58,8 @@ There is no build step and no restart is required for the plugin to mount. The r
 
 The dropdowns are built from **the models actually installed in your profile** (read from the `llm-pi-ai` settings namespace), not a hard-coded list, and each option shows its context window.
 
+**A fresh install ships with both models empty and changes nothing.** Nothing is guessed: until you pick a primary, compaction behaves exactly as it did before. That is the safe default, because naming a route in shipping code would be a guess that silently redirects someone else's profile at a provider it may not have — and a *fallback without a primary* is meaningless, so it does not start routing on its own.
+
 Every field is `volatile`, so a change applies to the **next** compaction with no restart.
 
 ## Choosing a fallback

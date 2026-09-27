@@ -57,6 +57,7 @@ window.__ModuleLoader__.load({
         warnSmaller: '兜底模型的上下文不比主模型大 —— 主模型因为「装不下」失败时，它很可能同样装不下。建议选一个窗口更大的。',
         warnSameModel: '主模型和兜底模型是同一个。',
         disabledHint: '路由已关闭：压缩继续使用引擎自己的设置。',
+        noPrimary: '还没选主模型：压缩暂时保持原样，选一个模型后开始生效。',
         pick: '（选择一个模型）'
       },
       en: {
@@ -81,6 +82,7 @@ window.__ModuleLoader__.load({
         warnSmaller: 'The fallback\u2019s context window is not larger than the primary\u2019s — when the primary fails because the replay does not fit, this fallback very likely will not fit either. Prefer a bigger window.',
         warnSameModel: 'Primary and fallback are the same model.',
         disabledHint: 'Routing is off: compaction keeps using the engine\u2019s own settings.',
+        noPrimary: 'No primary picked yet: compaction stays untouched until you choose one.',
         pick: '(pick a model)'
       }
     }
@@ -291,7 +293,12 @@ window.__ModuleLoader__.load({
             }
           },
           [
-            includeNone ? h('option', { key: '__none', value: '' }, t.fallbackNone) : null,
+            // An empty value must render as an explicit placeholder: otherwise the
+            // browser shows the first real option while the stored value stays empty,
+            // and the card would look like a model is selected when none is.
+            includeNone
+              ? h('option', { key: '__none', value: '' }, t.fallbackNone)
+              : value === '' ? h('option', { key: '__pick', value: '' }, t.pick) : null,
             value !== '' && !byValue.has(value)
               ? h('option', { key: '__current', value }, value + '  (not installed)')
               : null,
@@ -361,7 +368,9 @@ window.__ModuleLoader__.load({
             : null,
           draft.enabled !== true
             ? h('div', { key: 'off', style: noteStyle }, t.disabledHint)
-            : null,
+            : draft.primary === ''
+              ? h('div', { key: 'noprimary', style: noteStyle }, t.noPrimary)
+              : null,
           h('div', { key: 'status', style: noteStyle }, [
             busy ? t.saving : '',
             note !== '' ? (busy ? '' : note) : '',
