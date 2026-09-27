@@ -1,9 +1,21 @@
 {
   "name": "dsh-compaction-route",
   "version": "0.1.0",
-  "description": "Pick the conversation-compaction summarizer in the Web settings page, and give it a fallback model for when the primary cannot take the replay.",
+  "description": "Pick the conversation-compaction summarizer in the DeepSeek Harness Web settings page, and give it a fallback model for when the primary cannot take the replayed history.",
   "license": "MIT",
   "type": "module",
+  "author": {
+    "name": "643048695",
+    "url": "https://github.com/643048695"
+  },
+  "homepage": "https://github.com/643048695/dsh-compaction-route#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/643048695/dsh-compaction-route.git"
+  },
+  "bugs": {
+    "url": "https://github.com/643048695/dsh-compaction-route/issues"
+  },
   "exports": {
     ".": {
       "default": "./lib/index.js"
@@ -17,6 +29,9 @@
     "client",
     "cordis.patch.yml",
     "README.md",
+    "README.zh.md",
+    "CHANGELOG.md",
+    "CHANGELOG.zh.md",
     "LICENSE"
   ],
   "dsh": {
@@ -34,13 +49,12 @@
     "dsh",
     "deepseek-harness",
     "dsh-plugin",
+    "dsh-plugin-bundle",
     "compaction",
     "compaction-model",
     "context",
-    "fallback"
-  ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/643048695/dsh-compaction-route.git"
-  }
+    "context-window",
+    "fallback",
+    "summarizer"
+  ]
 }
