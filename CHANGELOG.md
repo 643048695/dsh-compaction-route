@@ -11,6 +11,8 @@ Moves the plugin onto the current core and makes its claims checkable.
 ### Changed
 
 - **Verified against DSH 0.2.1-rc.3**, the core shipped with the current desktop build. The three seams this plugin stands on are all still there: `llm/stream` (waterfall, carrying `purpose`, `signal` and `reasoningEffort`), `plugins.bundle.config`, and the `llm-pi-ai` settings namespace the card enumerates models from. The README compatibility note now says exactly which of those were checked instead of citing an older release.
+- **CI added.** A `manifest` job checks the things the plugin market refuses on (bundle patch present and naming the package, every `exports` target existing), and a `test` job runs the suite on ubuntu + windows against node 20 and 22 after syntax-checking both shipped modules. Green checks are the point: a claim about compatibility that nothing runs is just prose.
+
 - **`npm test` exists now.** Ten host-half cases run against a fake `llm.stream`: pass-through for non-compaction purposes, the empty-primary no-op, the primary rewrite with effort, the fallback chain, the both-failed outcome, the abort rule, the re-entrancy guard, and the disabled switch.
 
 ### Notes

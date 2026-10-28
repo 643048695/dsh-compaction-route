@@ -11,6 +11,8 @@
 ### 变更
 
 - **已对 DSH 0.2.1-rc.3 核对**（当前桌面版内置核心）。本插件立足的三处接缝都还在：`llm/stream`（waterfall，携带 `purpose`、`signal`、`reasoningEffort`）、`plugins.bundle.config`、以及卡片用来枚举模型的 `llm-pi-ai` 设置命名空间。README 的兼容性说明改为逐条列出核对对象，不再引用旧版本号。
+- **新增 CI。** `manifest` job 检查市场会拒的那几项（bundled patch 存在且提到包名、每个 `exports` 目标都存在），`test` job 在 ubuntu + windows、node 20 与 22 上先语法检查两个发布模块，再跑测试套件。绿勾才是重点：没有任何东西去跑的兼容性声明只是散文。
+
 - **新增 `npm test`。** 十个宿主半边用例跑在假的 `llm.stream` 上：非压缩用途放行、空主模型不生效、带 effort 的改写、兜底链、双双失败的结果、取消规则、重入保护、以及开关关闭。
 
 ### 说明

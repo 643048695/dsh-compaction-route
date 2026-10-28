@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  manifest:
+    name: bundle manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Check the bundle manifest the plugin market requires
+        run: |
+          node -e "
+          const fs = require('fs');
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const fail = (m) => { console.error('x ' + m); process.exit(1); };
+
+          if (!pkg.name || !pkg.version) fail('package.json needs name and version.');
+          if (!pkg.dsh || !pkg.dsh.bundle) {
+            fail('package.json declares no dsh.bundle - the market will reject this.');
+          }
+          const patch = pkg.dsh.bundle.patch;
+          if (!patch) fail('dsh.bundle.patch is missing.');
+          const patchPath = patch.replace(/^\.\//, '');
+          if (!fs.existsSync(patchPath)) fail('dsh.bundle.patch points at a missing file: ' + patch);
+
+          const text = fs.readFileSync(patchPath, 'utf8');
+          const bare = pkg.name.replace(/^@[^/]+\//, '');
+          if (!text.includes(pkg.name) && !text.includes(bare)) {
+            fail('cordis.patch.yml does not mention the package name.');
+          }
+
+          const entries = [];
+          for (const v of Object.values(pkg.exports || {})) {
+            if (typeof v === 'string') entries.push(v);
+            else if (v && typeof v === 'object') for (const vv of Object.values(v)) if (typeof vv === 'string') entries.push(vv);
+          }
+          for (const entry of entries) {
+            const p = entry.replace(/^\.\//, '');
+            if (p && !p.includes(':') && !fs.existsSync(p)) fail('missing entry file: ' + p);
+          }
+
+          console.log('ok - bundle manifest looks installable');
+          "
+
+  test:
+    name: test (${{ matrix.os }}, node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Syntax-check every shipped module
+        run: |
+          node --check lib/index.js
+          node --check client/client.js
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run the host-half suite
+        run: npm test
