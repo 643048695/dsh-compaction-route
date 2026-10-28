@@ -115,7 +115,12 @@ so `next(modifiedOptions)` silently ignores its argument and dispatches the orig
 
 ## Compatibility
 
-Works on `@deepseek-ai/dsh` **0.1.7-rc.2** (verified against it) and the same-node `0.1.7` line.
+Checked against `@deepseek-ai/dsh` **0.2.1-rc.3** — the core bundled with the current desktop build — and against the `0.1.7` line it was first written for.
+
+"Checked" for this plugin means two concrete things, both re-runnable from the repo:
+
+1. **The seams still exist.** The host half needs `llm/stream` (waterfall, with `purpose`, `signal` and `reasoningEffort` on the options it rewrites) and the browser half needs `plugins.bundle.config` plus the `llm-pi-ai` settings namespace it enumerates models from. All three are present in the 0.2.1-rc.3 core; if any of them disappears a future release, the plugin goes inert rather than breaking a chat turn (see the fall-through tests).
+2. **The behaviour holds.** `npm test` drives the compiled host half against a fake `llm.stream` and asserts the rewrites, the fallback chain, the abort rule and the re-entrancy guard.
 
 ## Development
 

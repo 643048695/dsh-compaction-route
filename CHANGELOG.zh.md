@@ -4,6 +4,19 @@
 
 本项目的所有重要变更。格式参考 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)，版本号遵循 [语义化版本](https://semver.org/spec/v2.0.0.html)。
 
+## [0.2.0] — 2026-10-29
+
+把插件对齐到当前核心，并让它的声明可以被复跑验证。
+
+### 变更
+
+- **已对 DSH 0.2.1-rc.3 核对**（当前桌面版内置核心）。本插件立足的三处接缝都还在：`llm/stream`（waterfall，携带 `purpose`、`signal`、`reasoningEffort`）、`plugins.bundle.config`、以及卡片用来枚举模型的 `llm-pi-ai` 设置命名空间。README 的兼容性说明改为逐条列出核对对象，不再引用旧版本号。
+- **新增 `npm test`。** 十个宿主半边用例跑在假的 `llm.stream` 上：非压缩用途放行、空主模型不生效、带 effort 的改写、兜底链、双双失败的结果、取消规则、重入保护、以及开关关闭。
+
+### 说明
+
+- 对已有安装无行为变化，无需迁移配置。
+
 ## [0.1.0] — 2026-09-27
 
 首个版本。

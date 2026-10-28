@@ -1,6 +1,6 @@
 {
   "name": "dsh-compaction-route",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pick the conversation-compaction summarizer in the DeepSeek Harness Web settings page, and give it a fallback model for when the primary cannot take the replayed history.",
   "license": "MIT",
   "type": "module",
@@ -24,9 +24,13 @@
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },
+  "scripts": {
+    "test": "node test/host.test.mjs"
+  },
   "files": [
     "lib",
     "client",
+    "test",
     "cordis.patch.yml",
     "README.md",
     "README.zh.md",

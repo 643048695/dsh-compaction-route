@@ -4,6 +4,19 @@
 
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.0] — 2026-10-29
+
+Moves the plugin onto the current core and makes its claims checkable.
+
+### Changed
+
+- **Verified against DSH 0.2.1-rc.3**, the core shipped with the current desktop build. The three seams this plugin stands on are all still there: `llm/stream` (waterfall, carrying `purpose`, `signal` and `reasoningEffort`), `plugins.bundle.config`, and the `llm-pi-ai` settings namespace the card enumerates models from. The README compatibility note now says exactly which of those were checked instead of citing an older release.
+- **`npm test` exists now.** Ten host-half cases run against a fake `llm.stream`: pass-through for non-compaction purposes, the empty-primary no-op, the primary rewrite with effort, the fallback chain, the both-failed outcome, the abort rule, the re-entrancy guard, and the disabled switch.
+
+### Notes
+
+- No behaviour change for existing installs; no settings migrate.
+
 ## [0.1.0] — 2026-09-27
 
 Initial release.

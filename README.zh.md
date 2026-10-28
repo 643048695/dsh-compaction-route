@@ -115,7 +115,12 @@ const next = () => (cbs.shift() ?? inner)(...args)
 
 ## 兼容性
 
-支持 `@deepseek-ai/dsh` **0.1.7-rc.2**（已在其上实测），以及同一 node 序列的 `0.1.7`。
+已对 `@deepseek-ai/dsh` **0.2.1-rc.3**（当前桌面版内置核心）核对，也仍然覆盖最初开发时的 `0.1.7` 线。
+
+这里的「核对」指两件可复跑的事：
+
+1. **接缝还在。** 宿主半边依赖 `llm/stream`（waterfall，且它改写的 options 上要有 `purpose`、`signal`、`reasoningEffort`），浏览器半边依赖 `plugins.bundle.config` 与它用来枚举模型的 `llm-pi-ai` 设置命名空间。这三处都存在于 0.2.1-rc.3 核心；将来若某处消失，插件会退化为不生效，而不是弄坏一次对话（见 fall-through 相关测试）。
+2. **行为还对。** `npm test` 用假的 `llm.stream` 驱动真实的宿主半边，断言改写、兜底链、取消规则与重入保护。
 
 ## 开发
 
