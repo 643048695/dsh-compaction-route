@@ -115,11 +115,11 @@ so `next(modifiedOptions)` silently ignores its argument and dispatches the orig
 
 ## Compatibility
 
-Checked against `@deepseek-ai/dsh` **0.2.1-rc.3** — the core bundled with the current desktop build — and against the `0.1.7` line it was first written for.
+Checked against `@deepseek-ai/dsh` **0.2.1-rc.5** — the core bundled with the current desktop build — and against the `0.1.7` line it was first written for. The rc.4 `conversation.chat.reasoning.body` change (`text` vs `rawText`) was read and does not apply here: this plugin renders into `plugins.bundle.config`, never a reasoning body.
 
 "Checked" for this plugin means two concrete things, both re-runnable from the repo:
 
-1. **The seams still exist.** The host half needs `llm/stream` (waterfall, with `purpose`, `signal` and `reasoningEffort` on the options it rewrites) and the browser half needs `plugins.bundle.config` plus the `llm-pi-ai` settings namespace it enumerates models from. All three are present in the 0.2.1-rc.3 core; if any of them disappears a future release, the plugin goes inert rather than breaking a chat turn (see the fall-through tests).
+1. **The seams still exist.** The host half needs `llm/stream` (waterfall, with `purpose`, `signal` and `reasoningEffort` on the options it rewrites) and the browser half needs `plugins.bundle.config` plus the `llm-pi-ai` settings namespace it enumerates models from. All three are present in the 0.2.1-rc.5 core; if any of them disappears a future release, the plugin goes inert rather than breaking a chat turn (see the fall-through tests).
 2. **The behaviour holds.** `npm test` drives the compiled host half against a fake `llm.stream` and asserts the rewrites, the fallback chain, the abort rule and the re-entrancy guard.
 
 ## Development

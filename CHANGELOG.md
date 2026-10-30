@@ -4,6 +4,20 @@
 
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] — 2026-10-30
+
+Re-checked against DSH 0.2.1-rc.5, the core the current desktop build ships.
+
+### Changed
+
+- **Verified against DSH 0.2.1-rc.5** (local `DeepSeek Harness.exe` FileVersion `0.2.1-rc.5`; the last check was `0.2.1-rc.3`). Both intervening releases were read, not assumed: rc.4 is an ACP-only stdout fix, rc.5 only reworks how thinking content is displayed. Neither touches a seam this plugin stands on — `llm/stream` still takes `(options, next)` and still carries `purpose: 'compaction' | 'session-title'`, `signal` and `reasoningEffort`; a finish chunk still reports `reason.kind === 'error' | 'aborted'` with `failure`; `plugins.bundle.config` still registers `{ name, key }`; the `llm-pi-ai` namespace still carries each model's `contextWindow`.
+- **rc.4's one contract change is not ours.** `conversation.chat.reasoning.body` now passes the processed display text in `text` and the raw model output in `rawText` (see `docs/upgrade-guide/v0.2.1-rc.4/reasoning-body-props` in the core repo). This plugin renders into `plugins.bundle.config` and never touches a reasoning body, so no migration was needed — recorded so the next reader does not have to re-derive it.
+- **No peer range to widen.** The package declares no `@deepseek-ai/dsh-*` peers; its only DeepSeek dependency is `@deepseek-ai/schemastery` (`^3.18.2`, resolving to 3.18.4), a caret range that already spans the host's copy. Nothing here can pin the host to a version it will silently skip.
+
+### Notes
+
+- No behaviour change and no settings migrate; the host-half suite is still 10/10.
+
 ## [0.2.0] — 2026-10-29
 
 Moves the plugin onto the current core and makes its claims checkable.
