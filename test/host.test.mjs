@@ -1,13 +1,17 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { apply, name } from "../lib/index.js";
+import { apply, applyEnginePolicy, name } from "../lib/index.js";
 
 /**
- * Minimal cordis-ish context. `inject(['llm'], fn)` is called synchronously with
- * a scope exposing `llm.stream`, and any listener the plugin registers on that
- * scope is captured so a test can drive it.
+ * Minimal cordis-ish context.
+ *
+ * `inject(['llm'], fn)` is called synchronously with a scope exposing `llm.stream`,
+ * and every listener the plugin registers is captured with its event name so a
+ * test can drive the one it cares about. `effect` runs its callback and its
+ * cleanup immediately, which exercises the timer-based sweep without leaving
+ * live timers behind.
  */
-function makeCtx(stream) {
+function makeCtx(stream, engines = {}) {
   const logs = [];
   const listeners = [];
   const ctx = {
@@ -23,13 +27,39 @@ function makeCtx(stream) {
     on(event, handler, options) {
       listeners.push({ event, handler, options });
     },
+    // Service lookup for the compaction backend, when a test supplies one.
+    get(serviceName) {
+      return engines[serviceName];
+    },
+    // Mirrors the real store shape: isolation symbol -> { name, value }.
+    reflect: {
+      store: Object.fromEntries(
+        Object.entries(engines).map(([serviceName, value]) => [
+          Symbol("isolate." + serviceName),
+          { name: serviceName, value },
+        ]),
+      ),
+    },
+    effect(fn) {
+      const cleanup = fn();
+      if (typeof cleanup === "function") cleanup();
+    },
   };
   return {
     ctx,
     logs,
     listeners,
-    fire: (options, next = async function* () { yield { type: "finish", reason: { kind: "done" }, from: "next" }; }) =>
-      listeners[0].handler(options, next),
+    of: (event) => listeners.filter((entry) => entry.event === event),
+    fire: (
+      options,
+      next = async function* () {
+        yield { type: "finish", reason: { kind: "done" }, from: "next" };
+      },
+    ) => {
+      const route = listeners.find((entry) => entry.event === "llm/stream");
+      assert.ok(route, "the plugin must register an llm/stream listener");
+      return route.handler(options, next);
+    },
   };
 }
 
@@ -40,7 +70,10 @@ function scriptedStream(replies) {
     calls.push(call);
     const reply = replies[call.model];
     if (reply === undefined) {
-      yield { type: "finish", reason: { kind: "error", failure: { code: "NOT_CONFIGURED", message: `no script for ${call.model}` } } };
+      yield {
+        type: "finish",
+        reason: { kind: "error", failure: { code: "NOT_CONFIGURED", message: `no script for ${call.model}` } },
+      };
       return;
     }
     for (const chunk of reply) yield chunk;
@@ -48,10 +81,30 @@ function scriptedStream(replies) {
   return { calls, stream };
 }
 
-const ok = (text) => [
-  { type: "text", text },
-  { type: "finish", reason: { kind: "done" } },
-];
+/**
+ * A stand-in compaction engine with the three entry points that matter.
+ * Every call is recorded so a test can prove what was delegated and what was not.
+ */
+function makeEngine() {
+  const calls = [];
+  const engine = {
+    async compactPressure(...args) {
+      calls.push(["pressure", ...args]);
+      return "pressure-result";
+    },
+    async compactIfNeeded(...args) {
+      calls.push(["ifNeeded", ...args]);
+      return "ifNeeded-result";
+    },
+    async compactNow(...args) {
+      calls.push(["now", ...args]);
+      return "now-result";
+    },
+  };
+  return { engine, calls };
+}
+
+const ok = (text) => [{ type: "text", text }, { type: "finish", reason: { kind: "done" } }];
 const failed = (code = "MODEL_INPUT_TOO_LARGE") => [
   { type: "text", text: "" },
   { type: "finish", reason: { kind: "error", failure: { code, message: "input is too large" } } },
@@ -71,12 +124,12 @@ test("declares the module name the bundle patch mounts", () => {
 
 test("registers one llm/stream listener, global and prepended", () => {
   const fake = scriptedStream({});
-  const { ctx, listeners } = makeCtx(fake.stream);
+  const { ctx, of } = makeCtx(fake.stream);
   apply(ctx, {});
-  assert.equal(listeners.length, 1);
-  assert.equal(listeners[0].event, "llm/stream");
-  assert.equal(listeners[0].options?.global, true);
-  assert.equal(listeners[0].options?.prepend, true);
+  const routes = of("llm/stream");
+  assert.equal(routes.length, 1);
+  assert.equal(routes[0].options?.global, true);
+  assert.equal(routes[0].options?.prepend, true);
 });
 
 test("chat turns and other purposes fall through untouched", async () => {
@@ -171,4 +224,98 @@ test("disabled leaves the engine alone", async () => {
   const chunks = await collect(fire({ purpose: "compaction" }));
   assert.equal(chunks.at(-1).from, "next");
   assert.equal(fake.calls.length, 0);
+});
+
+// --- engine switches -------------------------------------------------------
+
+test("both switches on delegates to the engine unchanged", async () => {
+  const { engine, calls } = makeEngine();
+  assert.equal(applyEnginePolicy(engine, () => ({ gate: true, auto: true })), true);
+
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), "pressure-result");
+  assert.equal(await engine.compactIfNeeded("a", "pressure", undefined), "ifNeeded-result");
+  assert.deepEqual(calls.map((c) => c[0]), ["pressure", "ifNeeded"]);
+  assert.deepEqual(calls[0].slice(1), ["a", "h", undefined, true], "arguments must pass through");
+});
+
+test("gate off lets the model switch through but keeps the other pressure passes", async () => {
+  const { engine, calls } = makeEngine();
+  const settings = { gate: false, auto: true };
+  applyEnginePolicy(engine, () => ({ gate: settings.gate, auto: settings.auto }));
+
+  // requireBelowThreshold === true is the model-switch gate, and nothing else.
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), null);
+  assert.equal(calls.length, 0, "the gate must not reach the engine");
+
+  // The between-step pressure pass passes false and must still run.
+  assert.equal(await engine.compactPressure("a", "h", undefined, false), "pressure-result");
+  assert.equal(calls.length, 1);
+});
+
+test("auto off silences every automatic path but not the manual command", async () => {
+  const { engine, calls } = makeEngine();
+  const settings = { gate: true, auto: false };
+  applyEnginePolicy(engine, () => ({ gate: settings.gate, auto: settings.auto }));
+  const manual = engine.compactNow;
+
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), null);
+  assert.equal(await engine.compactPressure("a", "h", undefined, false), null);
+  assert.equal(await engine.compactIfNeeded("a", "pressure", undefined), null);
+  assert.equal(await engine.compactIfNeeded("a", "context-overflow", undefined), null);
+  assert.equal(calls.length, 0, "no automatic trigger may reach the engine");
+
+  // /compact never reads the flag: it must survive both switches being off.
+  assert.equal(engine.compactNow, manual, "compactNow must not be wrapped");
+  assert.equal(await engine.compactNow("a", undefined), "now-result");
+  assert.deepEqual(calls.map((c) => c[0]), ["now"]);
+});
+
+test("the switches are read per call, so a settings edit applies immediately", async () => {
+  const { engine, calls } = makeEngine();
+  const settings = { gate: true, auto: true };
+  applyEnginePolicy(engine, () => ({ gate: settings.gate, auto: settings.auto }));
+
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), "pressure-result");
+  settings.gate = false;
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), null);
+  settings.gate = true;
+  settings.auto = false;
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), null);
+  settings.auto = true;
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), "pressure-result");
+  assert.equal(calls.length, 2, "only the two enabled calls reach the engine");
+});
+
+test("wrapping the same engine twice is refused", async () => {
+  const { engine } = makeEngine();
+  const flags = () => ({ gate: true, auto: true });
+  assert.equal(applyEnginePolicy(engine, flags), true);
+  assert.equal(applyEnginePolicy(engine, flags), false, "a second wrap would double-wrap and must be refused");
+});
+
+test("an engine without the entry points is left alone", () => {
+  assert.equal(applyEnginePolicy({}, () => ({ gate: true, auto: true })), false);
+  assert.equal(applyEnginePolicy(null, () => ({ gate: true, auto: true })), false);
+});
+
+test("a live engine is wrapped when the plugin mounts", async () => {
+  const fake = scriptedStream({});
+  const { engine, calls } = makeEngine();
+  const { ctx } = makeCtx(fake.stream, { compaction: engine });
+  apply(ctx, { gate: false, auto: true });
+
+  assert.equal(await engine.compactPressure("a", "h", undefined, true), null);
+  assert.equal(calls.length, 0, "the switch must be in force without waiting for a timer");
+});
+
+test("an engine found only through the service store is wrapped too", async () => {
+  const fake = scriptedStream({});
+  const { engine, calls } = makeEngine();
+  // Not reachable through ctx.get(): only the isolated realm's store entry exists.
+  const { ctx } = makeCtx(fake.stream, {});
+  ctx.reflect.store[Symbol("isolate.other")] = { name: "compaction", value: engine };
+  apply(ctx, { gate: true, auto: false });
+
+  assert.equal(await engine.compactIfNeeded("a", "pressure", undefined), null);
+  assert.equal(calls.length, 0);
 });

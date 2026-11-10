@@ -4,6 +4,30 @@
 
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0] — 2026-11-10
+
+Turns two engine behaviours that previously required editing host code into switches on the settings page.
+
+### Added
+
+- **"Condense to fit the destination model before switching" switch.** Off: a switch to a smaller window no longer condenses the history first — the request goes straight out, and an oversized history surfaces the provider's own "too long" error. This gate only exists since DSH 0.2.1-alpha.4, which is why switching models used to be free of it; it is also what blocked an entire switch once the previous model's entry disappeared. Implemented by wrapping the engine instance's `compactPressure` and intercepting only the `requireBelowThreshold === true` call, so the between-step pressure pass is unaffected.
+- **"Automatic compaction" switch.** Off: the engine stops condensing on its own — between-step pressure, model-switch pressure and overflow recovery all go quiet, leaving only the manual `/compact`. Equivalent to the engine's own `auto: false`, but without editing composition config, restarting, or touching a preset row.
+- **Switch UI in the browser half.** The two switches sit at the top of the card — they decide *whether* to condense, while everything below decides *which model* does it — and show their state side by side. With automatic compaction off, the card states plainly that a full context will be rejected by the provider and that `/compact` becomes the user's job.
+- **`test/client.test.mjs`.** Renders the card through a stub React and asserts the control set and defaults, the read-back of stored values, the Chinese UI, the degradation when the settings service is missing, and that a switch write carries only its own field plus the current revision.
+
+### Changed
+
+- **`applyEnginePolicy(engine, flags)` is now an exported function**, shared by the host half and the tests. It marks the instance with `Symbol.for('dsh-compaction-route.patched')` so a second wrap is refused, and returns `false` instead of throwing when the entry points are absent — a future engine rename degrades to "no effect" rather than to breakage.
+- **Engine discovery uses two paths:** `ctx.get('compaction', false)` first, then every isolation-symbol key in `ctx.reflect.store` — each agent preset mounts its own engine instance, so the former alone would miss other realms. A sweep runs at mount, then on `internal/service`, on `agent/pre-step` and `agent/request`, plus four short-delay timers.
+- **`compactNow()` is deliberately not wrapped.** The manual command never reads the `auto` flag and must keep working with both switches off; a test asserts it is never replaced.
+- **Host-half tests went from 10 to 18**, the eight new ones covering: both switches on passes through unchanged, gate off alone leaves between-step pressure intact, auto off silences all four automatic paths while the manual command survives, settings are read per call so an edit applies immediately, a second wrap is refused, an engine without the entry points is left alone, a live engine is wrapped at mount, and an engine reachable only through an isolated store is wrapped too.
+- Version bumped to `0.3.0`; `npm test` now runs both test files.
+
+### Notes
+
+- Both switches default to **on**, which is exactly the behaviour before the plugin was installed; they work on their own, without routing or a primary model.
+- With a switch off the behaviour is an **honest error**, not a softened one and not a silent model swap — whether to continue is the user's call.
+
 ## [0.2.1] — 2026-10-30
 
 Re-checked against DSH 0.2.1-rc.5, the core the current desktop build ships.

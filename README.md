@@ -6,7 +6,7 @@
 
 [English](README.md) | [中文](README.zh.md)
 
-Pick the **conversation-compaction summarizer** from the Web settings page, and give it a **fallback model**.
+Pick the **conversation-compaction summarizer** from the Web settings page, give it a **fallback model**, and switch off the **pre-switch capacity gate** or **automatic compaction** with one click.
 
 A [DeepSeek Harness](https://www.deepseek.com/harness/) plugin.
 
@@ -46,6 +46,21 @@ Listens on the `llm/stream` waterfall — the single seam every model call passe
 
 Every other request — chat turns, subagents, session titles, web search — falls straight through untouched.
 
+## The two switches
+
+Besides routing, it turns two behaviours you could not reach before into switches on the settings page:
+
+| Switch | Default | When off |
+|---|---|---|
+| **Condense to fit the destination model before switching** | on | A switch to a smaller window no longer condenses first; the request goes straight out, and an oversized history surfaces the provider's own "too long" error. |
+| **Automatic compaction** | on | The engine stops condensing on its own: between-step pressure, model-switch pressure, and overflow recovery all go quiet. Only the manual `/compact` command still compacts. |
+
+They are independent. Turning the gate off leaves between-step pressure and overflow recovery intact; turning automatic compaction off leaves `/compact` working — because the engine's `compactNow()` never reads that flag.
+
+**Why wrap the instance methods instead of rewriting config.** The engine lives inside each agent preset's isolated realm, and its automatic listeners are registered once in its constructor: rewriting a config value cannot un-register them, and restarting its fiber would tear down live sessions. Wrapping the two entry points on the *instance* keeps the listener graph intact, applies on the very next call (settings are read per call), and degrades to "no effect" rather than to breakage if a future engine renames them.
+
+With a switch off the behaviour is an **honest error**, not a softened one and not a silent model swap — whether to keep going is the user's call.
+
 ## Install
 
 **Web UI:** *Settings → Plugins → Add plugin*, and enter the spec:
@@ -68,6 +83,8 @@ Then enable the bundle when the installer asks. There is **no build step**, and 
 
 | Field | Meaning |
 |---|---|
+| **Condense to fit the destination model before switching** | On: a switch to a smaller window condenses the history first. Off: the request goes straight out and the provider reports "too long". |
+| **Automatic compaction** | On: condense near the limit, recover from overflow. Off: only the manual `/compact` command compacts. |
 | **Enable routing** | Off leaves the engine exactly as it was. |
 | **Primary model** | The summarizer used first. |
 | **Fallback model** | Tried when the primary ends in an error. Empty disables the fallback. |
@@ -95,6 +112,12 @@ compaction call ──▶ llm/stream waterfall
                        ├─ primary ──success──▶ yield its chunks
                        │        └──terminal error──▶ fallback ──▶ yield whatever it returns
                        └─ (a call this plugin created is never re-intercepted)
+
+engine instance ──▶ two entry points wrapped
+                       ├─ compactPressure(…, true)   ← pre-switch gate  → switch `gate`
+                       ├─ compactPressure(…, false)  ← between-step     → switch `auto`
+                       ├─ compactIfNeeded(…)         ← pressure + overflow → switch `auto`
+                       └─ compactNow()               ← manual /compact   → never intercepted
 ```
 
 **Why it re-enters `ctx.llm.stream()` instead of calling `next(newOptions)`.** cordis builds a waterfall's `next` as a closure over the *original* argument array:
@@ -119,17 +142,19 @@ Checked against `@deepseek-ai/dsh` **0.2.1-rc.5** — the core bundled with the 
 
 "Checked" for this plugin means two concrete things, both re-runnable from the repo:
 
-1. **The seams still exist.** The host half needs `llm/stream` (waterfall, with `purpose`, `signal` and `reasoningEffort` on the options it rewrites) and the browser half needs `plugins.bundle.config` plus the `llm-pi-ai` settings namespace it enumerates models from. All three are present in the 0.2.1-rc.5 core; if any of them disappears a future release, the plugin goes inert rather than breaking a chat turn (see the fall-through tests).
-2. **The behaviour holds.** `npm test` drives the compiled host half against a fake `llm.stream` and asserts the rewrites, the fallback chain, the abort rule and the re-entrancy guard.
+1. **The seams still exist.** The host half needs `llm/stream` (waterfall, with `purpose`, `signal` and `reasoningEffort` on the options it rewrites) and the browser half needs `plugins.bundle.config` plus the `llm-pi-ai` settings namespace it enumerates models from. All three are present in the 0.2.1-rc.5 core; if any of them disappears a future release, the plugin goes inert rather than breaking a chat turn (see the fall-through tests). The switches additionally need the engine's `compactPressure` / `compactIfNeeded` entry points — if a future engine renames them, `applyEnginePolicy` reports "not wrapped" and the switches simply stop applying.
+2. **The behaviour holds.** `npm test` drives the compiled host half against a fake `llm.stream` and asserts the rewrites, the fallback chain, the abort rule and the re-entrancy guard; it also asserts each switch against a stand-in engine. `test/client.test.mjs` renders the card through a stub React and asserts the controls, the read-back values and the write payload.
 
 ## Development
 
 Neither half needs a build step.
 
 ```
-lib/index.js        host half — the llm/stream route + the settings schema
+lib/index.js        host half — the llm/stream route, the engine switches, the settings schema
 client/client.js    browser half — the configuration card
 cordis.patch.yml    the bundle patch: one row, id "compaction-route"
+test/host.test.mjs  host-half behaviour, against a fake llm.stream and a stand-in engine
+test/client.test.mjs browser-half rendering, against a stub React and a fake settings service
 ```
 
 ## License

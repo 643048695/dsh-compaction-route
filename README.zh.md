@@ -6,7 +6,7 @@
 
 [English](README.md) | [中文](README.zh.md)
 
-在 Web 设置页里选择**会话压缩用的摘要模型**，并给它配一个**兜底模型**。
+在 Web 设置页里选择**会话压缩用的摘要模型**，并给它配一个**兜底模型**；同时可以一键关掉**换模型前那道容量门**和**自动压缩**。
 
 一个 [DeepSeek Harness](https://www.deepseek.com/harness/) 插件。
 
@@ -46,6 +46,21 @@ DSH 的压缩引擎只解析**一个**摘要模型，而且**没有任何失败�
 
 其余所有请求 —— 正常对话、子代理、会话标题、联网搜索 —— **完全原样通过，不受影响**。
 
+## 两个开关
+
+除了路由，它还把你原本动不了的两个引擎行为变成设置页里的开关：
+
+| 开关 | 默认 | 关掉之后 |
+|---|---|---|
+| **换模型前先压到新模型容量以内** | 开 | 切到窗口更小的模型时不再先压缩历史，请求直接发出去；装不下就由上游自己报「内容太长」。 |
+| **自动压缩** | 开 | 引擎不再自己压：步间压力压缩、切模型预压、溢出恢复全部停下。只有你手动敲 `/compact` 时才压。 |
+
+两者互不影响：关掉容量门，步间压缩和溢出恢复照旧；关掉自动压缩，手动 `/compact` 照旧 —— 因为引擎的 `compactNow()` 从不读那个标志。
+
+**为什么是包装实例方法，而不是改配置。** 引擎活在每个 agent 预设的隔离域里，自动压缩的监听器是在它的构造函数里一次性注册的：改配置值删不掉已注册的监听器，重启它的 fiber 又会拆掉正在跑的会话。改为在**实例上**包住两个入口，监听器图保持完整，设置每次调用现读所以立刻生效，将来引擎改名也只是退化为不生效而不是弄坏。
+
+两个开关关掉时的行为是**如实报错**，不软化、也不偷偷换模型 —— 要不要继续是使用者的判断。
+
 ## 安装
 
 **Web 界面：** *设置 → 插件 → 添加插件*，填入：
@@ -68,6 +83,8 @@ dsh plugin --profile <profile> add github:643048695/dsh-compaction-route
 
 | 字段 | 含义 |
 |---|---|
+| **换模型前先压到新模型容量以内** | 开着：切到窗口更小的模型时先把历史压小。关掉：直接发，装不下由上游报错。 |
+| **自动压缩** | 开着：接近上限时自动压、溢出后自动恢复。关掉：只有手动 `/compact` 才压。 |
 | **启用路由** | 关闭则引擎行为与装之前完全一致。 |
 | **主模型** | 优先使用的摘要模型。 |
 | **兜底模型** | 主模型出错后改用的模型。留空表示不用兜底。 |
@@ -95,6 +112,12 @@ dsh plugin --profile <profile> add github:643048695/dsh-compaction-route
                 ├─ 主模型 ──成功──▶ 输出它的 chunks
                 │        └──终止性错误──▶ 兜底模型 ──▶ 输出它返回的内容
                 └─（本插件自己创建的调用永远不会被自己再次拦截）
+
+引擎实例 ──▶ 两个入口被包住
+                ├─ compactPressure(…, true)   ← 换模型前的容量门 → 开关 gate
+                ├─ compactPressure(…, false)  ← 步间压力压缩     → 开关 auto
+                ├─ compactIfNeeded(…)         ← 压力 + 溢出恢复  → 开关 auto
+                └─ compactNow()               ← 手动 /compact    → 永不拦截
 ```
 
 **为什么是重新进入 `ctx.llm.stream()`，而不是调用 `next(newOptions)`。** cordis 把一个瀑布的 `next` 构建为对**原始参数数组**的闭包：
@@ -119,17 +142,19 @@ const next = () => (cbs.shift() ?? inner)(...args)
 
 这里的「核对」指两件可复跑的事：
 
-1. **接缝还在。** 宿主半边依赖 `llm/stream`（waterfall，且它改写的 options 上要有 `purpose`、`signal`、`reasoningEffort`），浏览器半边依赖 `plugins.bundle.config` 与它用来枚举模型的 `llm-pi-ai` 设置命名空间。这三处都存在于 0.2.1-rc.5 核心；将来若某处消失，插件会退化为不生效，而不是弄坏一次对话（见 fall-through 相关测试）。
-2. **行为还对。** `npm test` 用假的 `llm.stream` 驱动真实的宿主半边，断言改写、兜底链、取消规则与重入保护。
+1. **接缝还在。** 宿主半边依赖 `llm/stream`（waterfall，且它改写的 options 上要有 `purpose`、`signal`、`reasoningEffort`），浏览器半边依赖 `plugins.bundle.config` 与它用来枚举模型的 `llm-pi-ai` 设置命名空间。这三处都存在于 0.2.1-rc.5 核心；将来若某处消失，插件会退化为不生效，而不是弄坏一次对话（见 fall-through 相关测试）。两个开关另外依赖引擎的 `compactPressure` / `compactIfNeeded` 两个入口 —— 将来引擎改名，`applyEnginePolicy` 会返回「没装上」，开关就只是不生效。
+2. **行为还对。** `npm test` 用假的 `llm.stream` 驱动真实的宿主半边，断言改写、兜底链、取消规则与重入保护；也用替身引擎逐个断言两个开关。`test/client.test.mjs` 用替身 React 渲染卡片，断言控件、回读值与写回内容。
 
 ## 开发
 
 两半都不需要构建步骤。
 
 ```
-lib/index.js        宿主半 —— llm/stream 路由 + 设置 schema
+lib/index.js        宿主半 —— llm/stream 路由、引擎开关、设置 schema
 client/client.js    浏览器半 —— 配置卡片
 cordis.patch.yml    bundle 补丁：一行，id 为 "compaction-route"
+test/host.test.mjs  宿主半行为，对假 llm.stream 与替身引擎
+test/client.test.mjs 浏览器半渲染，对替身 React 与假设置服务
 ```
 
 ## 许可证

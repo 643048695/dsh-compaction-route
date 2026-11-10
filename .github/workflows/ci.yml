@@ -69,5 +69,5 @@ jobs:
           node --check client/client.js
       - name: Install dependencies
         run: npm install --no-audit --no-fund
-      - name: Run the host-half suite
+      - name: Run the test suites
         run: npm test

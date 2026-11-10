@@ -1,24 +1,29 @@
 /**
  * dsh-compaction-route — browser half: the bundle's own configuration card.
  *
- * Hand-written lazy bundle (\`window.__ModuleLoader__.load\`), no build step and no
+ * Hand-written lazy bundle (`window.__ModuleLoader__.load`), no build step and no
  * imports beyond React — the same shape every working third-party settings card in
  * this deployment uses.
  *
- * It renders into \`plugins.bundle.config\`, the seat for a bundle's own
+ * It renders into `plugins.bundle.config`, the seat for a bundle's own
  * configuration, keyed by the bundle's package name.
  *
  * Two seams carry the data:
- *   - \`remote.settings.describe()\` returns every active settings namespace. The
- *     \`llm-pi-ai\` namespace is where this profile declares its providers and
+ *   - `remote.settings.describe()` returns every active settings namespace. The
+ *     `llm-pi-ai` namespace is where this profile declares its providers and
  *     their models, so the dropdowns are built from the models actually
  *     installed rather than a hard-coded list. The same call carries this
  *     plugin's own namespace, its current values and its revision.
- *   - \`remote.settings.update(ns, patch, revision)\` writes the chosen route back.
+ *   - `remote.settings.update(ns, patch, revision)` writes the chosen route back.
  *
  * The context-window hint exists because a fallback only rescues an oversized
  * replay when its window is BIGGER than the primary's; two same-size routes just
  * repeat the same rejection. The card says so when the pick looks unable to help.
+ *
+ * The two engine switches sit above the routing block because they are a
+ * different job: routing decides WHICH model writes the summary, while the
+ * switches decide WHETHER the engine condenses at all. Each is a plain checkbox
+ * that writes immediately, so no save button is needed.
  *
  * @module dsh-compaction-route/client
  */
@@ -36,8 +41,14 @@ window.__ModuleLoader__.load({
     /** Every user-facing string, in both languages. */
     const S = {
       zh: {
-        heading: '会话压缩模型',
-        intro: '压缩时用哪个模型写摘要。主模型失败（例如放不下整段历史）时自动换兜底模型重试。只影响压缩调用，不影响正常对话。',
+        heading: '会话压缩',
+        intro: '下面两个开关决定引擎什么时候自动压缩；再下面是压缩用哪个模型写摘要。手动 /compact 始终可用，不受这两个开关影响。',
+        gate: '换模型前先压到新模型容量以内',
+        gateHint: '开着：切到窗口更小的模型时，先把历史压小再发出去。关掉：直接发，装不下就由上游报「内容太长」。',
+        auto: '自动压缩',
+        autoHint: '开着：上下文接近上限时自动压缩、溢出后自动恢复。关掉：只在你自己敲 /compact 时才压。',
+        routingHeading: '压缩模型路由',
+        routingIntro: '压缩时用哪个模型写摘要。主模型失败（例如放不下整段历史）时自动换兜底模型重试。只影响压缩调用，不影响正常对话。',
         enabled: '启用路由',
         primary: '主模型',
         fallback: '兜底模型',
@@ -56,13 +67,20 @@ window.__ModuleLoader__.load({
         windowLabel: '上下文',
         warnSmaller: '兜底模型的上下文不比主模型大 —— 主模型因为「装不下」失败时，它很可能同样装不下。建议选一个窗口更大的。',
         warnSameModel: '主模型和兜底模型是同一个。',
+        warnAutoOff: '自动压缩已关闭：引擎不会自己压了。上下文涨满后请求会被上游拒绝，届时你需要自己敲 /compact。',
         disabledHint: '路由已关闭：压缩继续使用引擎自己的设置。',
         noPrimary: '还没选主模型：压缩暂时保持原样，选一个模型后开始生效。',
         pick: '（选择一个模型）'
       },
       en: {
-        heading: 'Compaction model',
-        intro: 'Which model writes the summary when the context is compacted. If the primary fails — for example when the replay does not fit — the fallback is tried automatically. Only compaction calls are affected; normal turns are untouched.',
+        heading: 'Compaction',
+        intro: 'The two switches below decide when the engine condenses on its own; the block under them decides which model writes the summary. The manual /compact command always works, regardless of both switches.',
+        gate: 'Condense to fit the destination model before switching',
+        gateHint: 'On: switching to a smaller window condenses the history first. Off: the switch goes straight through, and an oversized history surfaces the provider\u2019s own "too long" error.',
+        auto: 'Automatic compaction',
+        autoHint: 'On: condense as the context nears its limit and recover from overflow. Off: condense only when you run /compact yourself.',
+        routingHeading: 'Compaction model routing',
+        routingIntro: 'Which model writes the summary when the context is compacted. If the primary fails — for example when the replay does not fit — the fallback is tried automatically. Only compaction calls are affected; normal turns are untouched.',
         enabled: 'Enable routing',
         primary: 'Primary model',
         fallback: 'Fallback model',
@@ -81,6 +99,7 @@ window.__ModuleLoader__.load({
         windowLabel: 'window',
         warnSmaller: 'The fallback\u2019s context window is not larger than the primary\u2019s — when the primary fails because the replay does not fit, this fallback very likely will not fit either. Prefer a bigger window.',
         warnSameModel: 'Primary and fallback are the same model.',
+        warnAutoOff: 'Automatic compaction is off: the engine will no longer condense on its own. Once the context is full the provider rejects the request, and you will need to run /compact yourself.',
         disabledHint: 'Routing is off: compaction keeps using the engine\u2019s own settings.',
         noPrimary: 'No primary picked yet: compaction stays untouched until you choose one.',
         pick: '(pick a model)'
@@ -135,7 +154,7 @@ window.__ModuleLoader__.load({
         return response.value
       }
 
-      /** Normalise \`settings.describe()\` output: an array or \`{namespaces}\`. */
+      /** Normalise `settings.describe()` output: an array or `{namespaces}`. */
       function namespacesOf (described) {
         if (Array.isArray(described)) return described
         if (described !== null && typeof described === 'object' && Array.isArray(described.namespaces)) {
@@ -193,6 +212,15 @@ window.__ModuleLoader__.load({
         fontSize: '13px'
       }
       const noteStyle = { fontSize: '12px', opacity: 0.75, lineHeight: 1.5 }
+      const hintStyle = { fontSize: '12px', opacity: 0.7, lineHeight: 1.5, marginTop: '-4px' }
+      const switchBlockStyle = {
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '2px',
+        padding: '10px 12px',
+        borderRadius: '8px',
+        border: '1px solid var(--dsw-alias-border-l2, rgba(128,128,128,0.2))'
+      }
       const warnStyle = {
         fontSize: '12px',
         lineHeight: 1.5,
@@ -208,7 +236,14 @@ window.__ModuleLoader__.load({
         const [note, setNote] = React.useState('')
         const [revision, setRevision] = React.useState(undefined)
         const [options, setOptions] = React.useState([])
-        const [draft, setDraft] = React.useState({ enabled: true, primary: '', fallback: '', effort: '' })
+        const [draft, setDraft] = React.useState({
+          enabled: true,
+          primary: '',
+          fallback: '',
+          effort: '',
+          gate: true,
+          auto: true
+        })
         const [busy, setBusy] = React.useState(false)
         const t = S[lang]
 
@@ -238,7 +273,9 @@ window.__ModuleLoader__.load({
               enabled: value.enabled !== false,
               primary: typeof value.primary === 'string' ? value.primary : '',
               fallback: typeof value.fallback === 'string' ? value.fallback : '',
-              effort: typeof value.effort === 'string' ? value.effort : ''
+              effort: typeof value.effort === 'string' ? value.effort : '',
+              gate: value.gate !== false,
+              auto: value.auto !== false
             })
             setRevision(mine.revision)
             setState('ready')
@@ -306,6 +343,25 @@ window.__ModuleLoader__.load({
           ]
         )
 
+        /** One checkbox row that writes on change, with its explanation underneath. */
+        const switchOf = (name, title, hint) => h('div', { key: 'switch-' + name, style: switchBlockStyle }, [
+          h('label', { key: 'label', style: rowStyle }, [
+            h('input', {
+              key: 'toggle',
+              type: 'checkbox',
+              checked: draft[name] === true,
+              disabled: busy,
+              onChange: (event) => {
+                const next = event.currentTarget.checked === true
+                setDraft((current) => ({ ...current, [name]: next }))
+                save({ [name]: next })
+              }
+            }),
+            h('span', { key: 'text', style: { fontSize: '13px' } }, title)
+          ]),
+          h('div', { key: 'hint', style: hintStyle }, hint)
+        ])
+
         const primaryInfo = byValue.get(draft.primary)
         const fallbackInfo = byValue.get(draft.fallback)
         const bothKnown = primaryInfo !== undefined && fallbackInfo !== undefined
@@ -318,6 +374,16 @@ window.__ModuleLoader__.load({
         return h('div', { style: boxStyle }, [
           h('div', { key: 'heading', style: { fontSize: '14px', fontWeight: 600 } }, t.heading),
           h('div', { key: 'intro', style: noteStyle }, t.intro),
+          switchOf('gate', t.gate, t.gateHint),
+          switchOf('auto', t.auto, t.autoHint),
+          draft.auto !== true
+            ? h('div', { key: 'warn-auto', style: warnStyle }, t.warnAutoOff)
+            : null,
+          h('div', {
+            key: 'routing-heading',
+            style: { fontSize: '13px', fontWeight: 600, marginTop: '4px' }
+          }, t.routingHeading),
+          h('div', { key: 'routing-intro', style: noteStyle }, t.routingIntro),
           h('div', { key: 'enabled', style: rowStyle }, [
             h('span', { key: 'label', style: labelStyle }, t.enabled),
             h('input', {
@@ -382,8 +448,8 @@ window.__ModuleLoader__.load({
 
     return {
       /**
-       * The client services this card reads. \`slots\` places it, \`locale\` drives its
-       * language, \`remote\` carries the settings calls.
+       * The client services this card reads. `slots` places it, `locale` drives its
+       * language, `remote` carries the settings calls.
        */
       inject: ['slots', 'locale', 'remote', 'remote.settings'],
       /**
