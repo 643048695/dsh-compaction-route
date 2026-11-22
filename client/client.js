@@ -56,15 +56,14 @@ window.__ModuleLoader__.load({
         effort: '推理强度',
         effortDefault: '（跟随模型默认）',
         loading: '读取中…',
-        save: '保存',
         saving: '保存中…',
-        saved: '已保存',
         savedRestart: '已保存。下一个压缩任务即刻生效，无需重启。',
         noSettings: '设置服务不可用，无法编辑。',
         saveFailed: (reason) => '保存失败：' + reason,
         loadFailed: (reason) => '读取失败：' + reason,
         models: (n) => '共 ' + n + ' 个可选模型',
-        windowLabel: '上下文',
+        notInstalled: '（未安装）',
+        notDeclared: '（未在档位列表中）',
         warnSmaller: '兜底模型的上下文不比主模型大 —— 主模型因为「装不下」失败时，它很可能同样装不下。建议选一个窗口更大的。',
         warnSameModel: '主模型和兜底模型是同一个。',
         warnAutoOff: '自动压缩已关闭：引擎不会自己压了。上下文涨满后请求会被上游拒绝，届时你需要自己敲 /compact。',
@@ -88,15 +87,14 @@ window.__ModuleLoader__.load({
         effort: 'Reasoning effort',
         effortDefault: '(provider default)',
         loading: 'Loading…',
-        save: 'Save',
         saving: 'Saving…',
-        saved: 'Saved',
         savedRestart: 'Saved. The next compaction uses it; no restart needed.',
         noSettings: 'The settings service is unavailable; this card cannot edit anything.',
         saveFailed: (reason) => 'Save failed: ' + reason,
         loadFailed: (reason) => 'Load failed: ' + reason,
         models: (n) => n + ' models available',
-        windowLabel: 'window',
+        notInstalled: '(not installed)',
+        notDeclared: '(not listed for this model)',
         warnSmaller: 'The fallback\u2019s context window is not larger than the primary\u2019s — when the primary fails because the replay does not fit, this fallback very likely will not fit either. Prefer a bigger window.',
         warnSameModel: 'Primary and fallback are the same model.',
         warnAutoOff: 'Automatic compaction is off: the engine will no longer condense on its own. Once the context is full the provider rejects the request, and you will need to run /compact yourself.',
@@ -184,6 +182,7 @@ window.__ModuleLoader__.load({
               provider,
               model: model.id,
               window: typeof model.contextWindow === 'number' ? model.contextWindow : undefined,
+              efforts: Array.isArray(model.reasoningEfforts) ? model.reasoningEfforts : undefined,
               label: model.id + (window === undefined ? '' : '  \u00b7 ' + window)
             })
           }
@@ -317,10 +316,12 @@ window.__ModuleLoader__.load({
         }
 
         const byValue = new Map(options.map((option) => [option.value, option]))
-        const selectOf = (name, value, includeNone) => h(
+
+        /** One dropdown bound to one draft field; writes on change. */
+        const dropdownOf = (name, value, children, style) => h(
           'select',
           {
-            style: selectStyle,
+            style: style === undefined ? selectStyle : style,
             value,
             disabled: busy,
             onChange: (event) => {
@@ -329,21 +330,24 @@ window.__ModuleLoader__.load({
               save({ [name]: next })
             }
           },
-          [
-            // An empty value must render as an explicit placeholder: otherwise the
-            // browser shows the first real option while the stored value stays empty,
-            // and the card would look like a model is selected when none is.
-            includeNone
-              ? h('option', { key: '__none', value: '' }, t.fallbackNone)
-              : value === '' ? h('option', { key: '__pick', value: '' }, t.pick) : null,
-            value !== '' && !byValue.has(value)
-              ? h('option', { key: '__current', value }, value + '  (not installed)')
-              : null,
-            ...options.map((option) => h('option', { key: option.value, value: option.value }, option.label))
-          ]
+          children
         )
 
-        /** One checkbox row that writes on change, with its explanation underneath. */
+        /** The model dropdown: placeholder, not-installed marker, then models. */
+        const selectOf = (name, value, includeNone) => dropdownOf(name, value, [
+          // An empty value must render as an explicit placeholder: otherwise the
+          // browser shows the first real option while the stored value stays empty,
+          // and the card would look like a model is selected when none is.
+          includeNone
+            ? h('option', { key: '__none', value: '' }, t.fallbackNone)
+            : value === '' ? h('option', { key: '__pick', value: '' }, t.pick) : null,
+          value !== '' && !byValue.has(value)
+            ? h('option', { key: '__current', value }, value + '  ' + t.notInstalled)
+            : null,
+          ...options.map((option) => h('option', { key: option.value, value: option.value }, option.label))
+        ])
+
+        /** One checkbox that writes on change, with an optional explanation underneath. */
         const switchOf = (name, title, hint) => h('div', { key: 'switch-' + name, style: switchBlockStyle }, [
           h('label', { key: 'label', style: rowStyle }, [
             h('input', {
@@ -359,7 +363,7 @@ window.__ModuleLoader__.load({
             }),
             h('span', { key: 'text', style: { fontSize: '13px' } }, title)
           ]),
-          h('div', { key: 'hint', style: hintStyle }, hint)
+          hint === undefined ? null : h('div', { key: 'hint', style: hintStyle }, hint)
         ])
 
         const primaryInfo = byValue.get(draft.primary)
@@ -370,6 +374,14 @@ window.__ModuleLoader__.load({
           primaryInfo.window !== undefined &&
           fallbackInfo.window !== undefined &&
           fallbackInfo.window <= primaryInfo.window
+        // The effort dropdown follows the primary model's declared levels when it
+        // declares any; the fixed list only covers models that declare none.
+        const declaredEfforts = primaryInfo !== undefined && Array.isArray(primaryInfo.efforts)
+          ? primaryInfo.efforts.filter((level) => typeof level === 'string' && level !== '')
+          : []
+        const effortLevels = declaredEfforts.length > 0
+          ? declaredEfforts
+          : ['low', 'medium', 'high', 'xhigh', 'max']
 
         return h('div', { style: boxStyle }, [
           h('div', { key: 'heading', style: { fontSize: '14px', fontWeight: 600 } }, t.heading),
@@ -384,20 +396,7 @@ window.__ModuleLoader__.load({
             style: { fontSize: '13px', fontWeight: 600, marginTop: '4px' }
           }, t.routingHeading),
           h('div', { key: 'routing-intro', style: noteStyle }, t.routingIntro),
-          h('div', { key: 'enabled', style: rowStyle }, [
-            h('span', { key: 'label', style: labelStyle }, t.enabled),
-            h('input', {
-              key: 'toggle',
-              type: 'checkbox',
-              checked: draft.enabled === true,
-              disabled: busy,
-              onChange: (event) => {
-                const next = event.currentTarget.checked === true
-                setDraft((current) => ({ ...current, enabled: next }))
-                save({ enabled: next })
-              }
-            })
-          ]),
+          switchOf('enabled', t.enabled),
           h('div', { key: 'primary', style: rowStyle }, [
             h('span', { key: 'label', style: labelStyle }, t.primary),
             selectOf('primary', draft.primary, false)
@@ -408,23 +407,13 @@ window.__ModuleLoader__.load({
           ]),
           h('div', { key: 'effort', style: rowStyle }, [
             h('span', { key: 'label', style: labelStyle }, t.effort),
-            h(
-              'select',
-              {
-                style: { ...selectStyle, minWidth: '160px' },
-                value: draft.effort,
-                disabled: busy,
-                onChange: (event) => {
-                  const next = event.currentTarget.value
-                  setDraft((current) => ({ ...current, effort: next }))
-                  save({ effort: next })
-                }
-              },
-              [
-                h('option', { key: '', value: '' }, t.effortDefault),
-                ...['low', 'medium', 'high', 'xhigh', 'max'].map((level) => h('option', { key: level, value: level }, level))
-              ]
-            )
+            dropdownOf('effort', draft.effort, [
+              h('option', { key: '', value: '' }, t.effortDefault),
+              draft.effort !== '' && !effortLevels.includes(draft.effort)
+                ? h('option', { key: '__current', value: draft.effort }, draft.effort + '  ' + t.notDeclared)
+                : null,
+              ...effortLevels.map((level) => h('option', { key: level, value: level }, level))
+            ], { ...selectStyle, minWidth: '160px' })
           ]),
           smallerWindow
             ? h('div', { key: 'warn', style: warnStyle }, t.warnSmaller)

@@ -319,3 +319,29 @@ test("an engine found only through the service store is wrapped too", async () =
   assert.equal(await engine.compactIfNeeded("a", "pressure", undefined), null);
   assert.equal(calls.length, 0);
 });
+
+test("a late engine is wrapped by the pre-step sweep before its first turn", async () => {
+  const fake = scriptedStream({});
+  const { engine, calls } = makeEngine();
+  const made = makeCtx(fake.stream, {});
+  apply(made.ctx, { gate: true, auto: false });
+  // The engine appears only after the plugin has mounted.
+  made.ctx.reflect.store[Symbol("isolate.late")] = { name: "compaction", value: engine };
+
+  const preStep = made.of("agent/pre-step")[0];
+  assert.ok(preStep, "a pre-step sweep must be registered");
+  const marker = {};
+  const result = await preStep.handler({}, () => marker);
+  assert.equal(result, marker, "the sweep must not replace the step");
+
+  assert.equal(await engine.compactIfNeeded("a", "pressure", undefined), null);
+  assert.equal(calls.length, 0, "the late engine must be wrapped by the pre-step sweep");
+});
+
+test("the per-request sweep is not wired: pre-step already covers the turn", () => {
+  const fake = scriptedStream({});
+  const { ctx, of } = makeCtx(fake.stream);
+  apply(ctx, {});
+  assert.equal(of("agent/pre-step").length, 1, "exactly one pre-step sweep");
+  assert.equal(of("agent/request").length, 0, "no redundant per-request rescan");
+});

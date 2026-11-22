@@ -1,6 +1,6 @@
 {
   "name": "dsh-compaction-route",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Switch off the pre-switch capacity gate and automatic compaction, and pick the conversation-compaction summarizer (with a fallback), all from the DeepSeek Harness Web settings page.",
   "license": "MIT",
   "type": "module",

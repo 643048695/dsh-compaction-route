@@ -4,6 +4,21 @@
 
 All notable changes to this project. Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1] — 2026-11-10
+
+Maintenance release: the only user-visible change is the effort dropdown.
+
+### Added
+
+- **The effort dropdown follows the primary model's declared levels.** Models in the `llm-pi-ai` namespace can declare `reasoningEfforts`; when the picked primary declares any, exactly those levels are offered, so a level the model would reject can no longer be picked. A model that declares none falls back to the previous fixed list (`low` / `medium` / `high` / `xhigh` / `max`), and a stored level the model does not declare stays visible, marked "(not listed for this model)".
+- **Four new tests** — two host (a late engine is wrapped by the pre-step sweep; the per-request sweep is no longer wired) and two client (the declared-levels dropdown; the marked undeclared stored level).
+
+### Changed
+
+- **The redundant `agent/request` sweep is gone.** The engine sweep ran on `agent/pre-step` and again on `agent/request`; the second scan sat later in the same turn and could never see an engine the first one missed. The sweep at mount, the `internal/service` listener, and the short-delay timers are unchanged.
+- **The settings card builds its dropdowns and checkboxes through two shared helpers** (`dropdownOf` / `switchOf`) instead of three near-identical inline blocks.
+- **Dead weight removed:** three unused strings per language (`save`, `saved`, `windowLabel`) and a `try`/`catch` that re-threw unchanged.
+
 ## [0.3.0] — 2026-11-10
 
 Turns two engine behaviours that previously required editing host code into switches on the settings page.

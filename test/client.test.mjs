@@ -103,7 +103,7 @@ function load() {
 }
 
 /** The namespace payload a real `settings.describe()` returns for this profile. */
-function describeFixture(value, revision = 7) {
+function describeFixture(value, revision = 7, models) {
   return {
     ok: true,
     value: [
@@ -112,7 +112,7 @@ function describeFixture(value, revision = 7) {
         value: {
           providers: {
             "magpie-anthropic": {
-              models: [
+              models: models ?? [
                 { id: "kiro/claude-opus-5.5", contextWindow: 1000000 },
                 { id: "kiro/claude-haiku-5.5", contextWindow: 100000 },
               ],
@@ -126,7 +126,7 @@ function describeFixture(value, revision = 7) {
 }
 
 /** Mount the card with a fake client context and return the component. */
-function mount({ locale = "en-US", value = {}, update } = {}) {
+function mount({ locale = "en-US", value = {}, update, models } = {}) {
   const { module, render } = load();
   let Card;
   const updates = [];
@@ -143,7 +143,7 @@ function mount({ locale = "en-US", value = {}, update } = {}) {
     locale: { getLocale: () => ({ active: locale }) },
     remote: {
       settings: {
-        describe: async () => describeFixture(value),
+        describe: async () => describeFixture(value, 7, models),
         update: async (ns, patch, revision) => {
           updates.push({ ns, patch, revision });
           if (update !== undefined) return update(ns, patch, revision);
@@ -241,6 +241,34 @@ test("the model dropdowns are built from the llm-pi-ai namespace", async () => {
   assert.deepEqual(values, ["magpie-anthropic|kiro/claude-opus-5.5", "magpie-anthropic|kiro/claude-haiku-5.5"]);
   assert.ok(options[0].children.join("").includes("pick"), "the empty slot must read as a prompt, not a model");
   assert.ok(options[1].children.join("").includes("1M"), "the window hint must be shown");
+});
+
+test("the effort dropdown follows the primary model's declared levels", async () => {
+  const { Card, render } = mount({
+    value: { enabled: true, primary: "magpie-anthropic|group/x", effort: "" },
+    models: [{ id: "group/x", contextWindow: 500000, reasoningEfforts: ["medium", "high"] }],
+  });
+  const nodes = flatten(await render(Card));
+  const effort = nodes.filter((node) => node.type === "select")[2];
+  const values = flatten(effort)
+    .filter((node) => node.type === "option")
+    .map((node) => node.props.value);
+  assert.deepEqual(values, ["", "medium", "high"], "declared levels replace the fixed list");
+});
+
+test("a stored effort the model does not declare stays visible, marked", async () => {
+  const { Card, render } = mount({
+    value: { enabled: true, primary: "magpie-anthropic|group/x", effort: "turbo" },
+    models: [{ id: "group/x", contextWindow: 500000, reasoningEfforts: ["medium", "high"] }],
+  });
+  const nodes = flatten(await render(Card));
+  const options = flatten(nodes.filter((node) => node.type === "select")[2])
+    .filter((node) => node.type === "option");
+  assert.deepEqual(options.map((node) => node.props.value), ["", "turbo", "medium", "high"]);
+  assert.ok(
+    options[1].children.join("").includes("not listed"),
+    "the stored level must be marked as undeclared",
+  );
 });
 
 test("flipping a switch writes only that field, with the current revision", async () => {

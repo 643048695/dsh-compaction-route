@@ -88,9 +88,9 @@ Then enable the bundle when the installer asks. There is **no build step**, and 
 | **Enable routing** | Off leaves the engine exactly as it was. |
 | **Primary model** | The summarizer used first. |
 | **Fallback model** | Tried when the primary ends in an error. Empty disables the fallback. |
-| **Reasoning effort** | Effort for compaction calls; empty keeps the provider's default. |
+| **Reasoning effort** | Effort for compaction calls; empty keeps the provider's default. The dropdown lists the primary model's declared levels, falling back to a fixed list when it declares none. |
 
-Both dropdowns are built from **the models actually installed in your profile** — read from the `llm-pi-ai` settings namespace, so whatever you have is what you can pick — and each option shows its context window.
+The model dropdowns are built from **the models actually installed in your profile** — read from the `llm-pi-ai` settings namespace, so whatever you have is what you can pick — and each option shows its context window.
 
 **A fresh install ships with both models empty and changes nothing.** Nothing is guessed: until you pick a primary, compaction behaves exactly as it did before. Naming a route in shipping code would be a guess that silently redirects someone else's profile at a provider it may not have — and a *fallback without a primary* is meaningless, so it does not start routing on its own.
 
